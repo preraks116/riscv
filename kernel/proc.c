@@ -289,6 +289,9 @@ fork(void)
   }
   np->sz = p->sz;
 
+  //copy mask from parent to child 
+  np->mask = p->mask;
+
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
 
@@ -316,6 +319,13 @@ fork(void)
   release(&np->lock);
 
   return pid;
+}
+
+void 
+trace(int mask)
+{
+  struct proc *p = myproc();
+  p->mask = mask;
 }
 
 // Pass p's abandoned children to init.
