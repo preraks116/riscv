@@ -131,13 +131,13 @@ static uint64 (*syscalls[])(void) = {
 [SYS_trace]   sys_trace,
 };
 
-struct syscall_info{
+struct sysindex{
   int num;
   char *name;
 };
 
 //struct for syscall info
-struct syscall_info syscall_info[] = 
+struct sysindex sysindex[] = 
 {
   [SYS_fork] { 0, "fork" },
   [SYS_exit] { 1, "exit" },
@@ -168,20 +168,24 @@ syscall(void)
 {
   int num,mask;
   struct proc *p = myproc();
-
   num = p->trapframe->a7;
   mask = p->mask;
-  if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
-    p->trapframe->a0 = syscalls[num]();
-  } 
-  else if(mask & (1 << num))
+  int r = mask & (1 << num);
+  if(num>0)
   {
-    printf("\n%d: syscall %s (",p->pid,syscall_info[num].name);
-    for (int i = 0; i < syscall_info[num].num; i++)
+    if(num < (sizeof(syscalls)/sizeof((syscalls)[0])) && syscalls[num])
     {
-      printf("%d ",argraw(i));
+      p->trapframe->a0 = syscalls[num]();
+      if(r)
+      {
+        printf("%d: syscall %s (",p->pid,sysindex[num].name);
+        for (int i = 0; i < sysindex[num].num; i++)
+        {
+          printf("%d ",argraw(i));
+        }
+        printf("\b) -> %d\n", p->trapframe->a0);
+      }
     }
-    printf(") %d\n", p->trapframe->a0);
   }
   else {
     printf("%d %s: unknown sys call %d\n",
