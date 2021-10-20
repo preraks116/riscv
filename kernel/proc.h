@@ -94,6 +94,7 @@ struct proc {
   int pid;                     // Process ID
 
   int mask;                    // its bits specify which syscalls to trace
+  int ctime;                   // process creation time
 
   // wait_lock must be held when using this:
   struct proc *parent;         // Parent process

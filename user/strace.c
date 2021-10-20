@@ -4,16 +4,16 @@
 
 int main(int argc, char *argv[])
 {
-  int trace_mask;
+  int mask;
   if (argc < 3)
   {
     fprintf(2, "usage: strace mask command [args]\n");
     exit(1);
   }
 
-  trace_mask = atoi(argv[1]);
+  mask = atoi(argv[1]);
 
-  trace(trace_mask);
+  trace(mask);
 
   char *execargs[argc - 1];
   for (int i = 0; i < argc - 2; i++)

@@ -132,7 +132,7 @@ static uint64 (*syscalls[])(void) = {
 };
 
 struct sysindex{
-  int num;
+  int val;
   char *name;
 };
 
@@ -166,30 +166,26 @@ struct sysindex sysindex[] =
 void
 syscall(void)
 {
-  int num,mask;
   struct proc *p = myproc();
-  num = p->trapframe->a7;
-  mask = p->mask;
-  int r = mask & (1 << num);
-  if(num>0)
+  int val = p->trapframe->a7;
+  if(val>0)
   {
-    if(num < (sizeof(syscalls)/sizeof((syscalls)[0])) && syscalls[num])
+    if(val < (sizeof(syscalls)/sizeof((syscalls)[0])) && syscalls[val])
     {
-      p->trapframe->a0 = syscalls[num]();
+      p->trapframe->a0 = syscalls[val]();
+      int mask = p->mask;
+      int r = mask & (1 << val);
       if(r)
       {
-        printf("%d: syscall %s (",p->pid,sysindex[num].name);
-        for (int i = 0; i < sysindex[num].num; i++)
-        {
-          printf("%d ",argraw(i));
-        }
+        printf("%d: syscall %s (",p->pid,sysindex[val].name);
+        for (int i = 0; i < sysindex[val].val; i++){printf("%d ",argraw(i));}
         printf("\b) -> %d\n", p->trapframe->a0);
       }
     }
   }
   else {
     printf("%d %s: unknown sys call %d\n",
-            p->pid, p->name, num);
+            p->pid, p->name, val);
     p->trapframe->a0 = -1;
   }
 }

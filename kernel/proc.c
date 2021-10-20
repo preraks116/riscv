@@ -119,7 +119,7 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
-
+  p->ctime = ticks;
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     freeproc(p);
@@ -448,9 +448,9 @@ void
 scheduler(void)
 {
   struct proc *p;
-  struct cpu *c = mycpu();
-  
+  struct cpu *c = mycpu();  
   c->proc = 0;
+  #ifdef DEFAULT  // default is to use round-robin
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
@@ -472,6 +472,55 @@ scheduler(void)
       release(&p->lock);
     }
   }
+  #endif
+
+  #ifdef FCFS
+  for(;;)
+  {
+    // struct proc *alottedP = 0;
+    intr_on();
+    struct proc *minproc = 0;
+
+    //finding proc that was made earliest - sorting by ctime
+    for(p = proc; p < &proc[NPROC]; p++) 
+    {
+      if(p->state == RUNNABLE) 
+      {
+        if(!minproc)
+        {
+          minproc = p;
+        }
+        // printf("runningpid: %d\n",p->pid);
+        else if(p->ctime < minproc->ctime)
+        {
+          minproc = p;
+        }
+      }
+    }
+    // in case there are no runnable processes in ptable
+    if(!minproc)
+    {
+      continue;
+    }
+    //context switching for minproc
+    acquire(&minproc->lock);
+    if(minproc->state == RUNNABLE) 
+    {
+      minproc->state = RUNNING;
+      c->proc = minproc;
+      swtch(&c->context, &minproc->context);
+      c->proc = 0;
+    }
+    release(&minproc->lock);
+  }
+  #endif
+  
+  #ifdef PBS
+  // PBS scheduler
+  #endif
+  #ifdef MLFQ
+  // MLFQ scheduler
+  #endif
 }
 
 // Switch to scheduler.  Must hold only p->lock
