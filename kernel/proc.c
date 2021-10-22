@@ -119,7 +119,9 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
+  acquire(&tickslock);
   p->ctime = ticks;
+  release(&tickslock);
   p->priority = 60;
   p->niceness = 5;
   p->sched_time = 0;
