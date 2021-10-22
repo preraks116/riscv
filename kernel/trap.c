@@ -164,6 +164,25 @@ kerneltrap()
 void
 clockintr()
 {
+  //get current running process - if running - inc rtime, if waiting - inc wtime
+
+  struct proc *p = myproc();
+  if(p) // this might be really bad
+  {
+    acquire(&p->lock);
+    if(p->state == RUNNING)
+    {
+      p->rtime++;
+    }
+    else if(p->state == SLEEPING)
+    {
+      p->wtime++;
+    }
+    release(&p->lock);
+  }
+
+
+  // increment ticks
   acquire(&tickslock);
   ticks++;
   wakeup(&ticks);

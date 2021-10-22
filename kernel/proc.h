@@ -95,6 +95,12 @@ struct proc {
 
   int mask;                    // its bits specify which syscalls to trace
   int ctime;                   // process creation time
+  int rtime;                  // process running time
+  int wtime;                  // process waiting time
+  int sched_time;              // number of times proc has been scheduled
+
+  int priority;                // scheduling priority
+  int niceness;                // scheduling niceness
 
   // wait_lock must be held when using this:
   struct proc *parent;         // Parent process

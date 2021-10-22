@@ -120,6 +120,9 @@ found:
   p->pid = allocpid();
   p->state = USED;
   p->ctime = ticks;
+  p->priority = 60;
+  p->niceness = 5;
+  p->sched_time = 0;
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     freeproc(p);
@@ -321,6 +324,55 @@ fork(void)
   return pid;
 }
 
+int set_priority(int priority, int pid)
+{
+  struct proc *p;
+  // printf("set_priority: %d %d\n", priority, pid);
+  int old_priority;
+  for(p = proc; p < &proc[NPROC]; p++) 
+  {
+    if(p->pid == pid)
+    {
+      acquire(&p->lock);
+      // printf("%d %d %d\n",p->rtime, p->priority, p->ctime);
+      old_priority = p->priority;
+      p->priority = priority;
+      p->niceness = 5;
+      release(&p->lock);
+      return old_priority;
+    }
+  }
+  return -1;
+}
+
+void setprio()
+{
+  struct proc *p;
+  int old_priority;
+  for(p = proc; p < &proc[NPROC]; p++) 
+  {
+    if(p->pid != 0)
+    {
+      if(p->rtime == 0)
+      {
+        p->niceness = 5;
+      }
+      else
+      {
+        p->niceness = p->rtime/(p->rtime + p->wtime);
+      }
+      // printf("%d\n",p->niceness);
+      int temp = p->priority - p->niceness + 5 > 100 ? 100 : p->priority - p->niceness + 5;
+      int dp = 0 > temp ? 0 : temp;
+      old_priority = set_priority(dp, p->pid);
+      if(old_priority > dp)
+      {
+        //rescheduling??
+      }
+    }
+  }
+}
+
 void 
 trace(int mask)
 {
@@ -517,6 +569,89 @@ scheduler(void)
   
   #ifdef PBS
   // PBS scheduler
+  for(;;)
+  {
+    intr_on();
+    setprio();
+    struct proc *minproc = 0;
+    int min_priority = 101;
+    int sameprio = -1;
+    int samesched = -1;
+    for(p = proc; p < &proc[NPROC]; p++) 
+    {
+      if(p->state == RUNNABLE) 
+      {
+        if(p->priority < min_priority)
+        {
+          sameprio = 0;
+          min_priority = p->priority;
+          minproc = p;
+        }
+        else if(p->priority == min_priority)
+        {
+          sameprio++;
+        }
+      }
+    }
+    // incase no process in ptable is runnable
+    if(!minproc)
+    {
+      continue;
+    }
+    if(sameprio > 0)
+    {
+      // if there are multiple processes with same priority,
+      // then we will choose one that has been scheduled more
+      for(p = proc; p < &proc[NPROC]; p++) 
+      {
+        if(p->state == RUNNABLE) 
+        {
+          if(p->priority == min_priority)
+          {
+            //sched_time is the number of time proc has been scheduled
+            if(p->sched_time > minproc->sched_time)
+            {
+              samesched = 0;
+              minproc = p;
+            }
+            else if(p->sched_time == minproc->sched_time)
+            {
+              samesched++;
+            }
+          }
+        }
+      }
+    }
+    if(samesched > 0)
+    {
+      // if there are multiple processes with same priority and same sched_time,
+      // then we will choose one that has lower ctime
+      for(p = proc; p < &proc[NPROC]; p++) 
+      {
+        if(p->state == RUNNABLE) 
+        {
+          if(p->priority == min_priority && p->sched_time == minproc->sched_time)
+          {
+            if(p->ctime < minproc->ctime)
+            {
+              minproc = p;
+            }
+          }
+        }
+      }
+    }
+    acquire(&minproc->lock);
+    if(minproc->state == RUNNABLE) 
+    {
+      minproc->state = RUNNING;
+      minproc->sched_time++;
+      c->proc = minproc;
+      swtch(&c->context, &minproc->context);
+      c->proc = 0;
+    }
+    release(&minproc->lock);
+  }
+
   #endif
   #ifdef MLFQ
   // MLFQ scheduler

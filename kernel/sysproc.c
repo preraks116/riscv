@@ -105,3 +105,15 @@ sys_trace(void)
   trace(n);
   return 0;
 }
+
+uint64
+sys_set_priority(void)
+{
+  int pid;
+  int priority;
+  if(argint(0, &priority) < 0)
+    return -1;
+  if(argint(1, &pid) < 0)
+    return -1;
+  return set_priority(priority,pid);
+}
