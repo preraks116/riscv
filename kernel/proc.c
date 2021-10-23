@@ -125,6 +125,8 @@ found:
   p->priority = 60;
   p->niceness = 5;
   p->sched_time = 0;
+  p->tickstorage[0] = 0;
+  p->tickstorage[1] = 0;
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     freeproc(p);
@@ -739,7 +741,11 @@ sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   p->chan = chan;
   p->state = SLEEPING;
-
+  #ifdef PBS
+  p->tickstorage[0] = ticks;
+  p->rtime += p->tickstorage[0] - p->tickstorage[1];
+  #endif
+  // printf("%d: sleep %d %d\n", p->pid, p->rtime,p->wtime);
   sched();
 
   // Tidy up.
@@ -762,6 +768,10 @@ wakeup(void *chan)
       acquire(&p->lock);
       if(p->state == SLEEPING && p->chan == chan) {
         p->state = RUNNABLE;
+        #ifdef PBS
+        p->tickstorage[1] = ticks;
+        p->wtime += p->tickstorage[1] - p->tickstorage[0];
+        #endif
       }
       release(&p->lock);
     }

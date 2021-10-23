@@ -19,7 +19,9 @@
 
 ### Priority Based Scheduling (PBS)
 
-- added `rtime`, `wtime`, `priority`, `niceness` and `sched_time` to `struct proc`
+- added `rtime`, `wtime`, `priority`, `niceness`, `tickstorage` and `sched_time` to `struct proc`
 - added `set_prority` syscall which sets the priority for a specified process (with process pid)
 - added `setprio` function which calculates `DP` for each process in the process table before scheduling
+- made changes to `sleep` and `wake` function to update `rtime` and `wtime` when the process is sleeping or not.
+- made changes to `clockintr` which updates the `rtime` and `wtime` (but this is wrong ig)
 - added PBS scheduler to `scheduler` function which sorts process according to `priority`, `sched_time` and `ctime`, and then switches cpu context to this process.

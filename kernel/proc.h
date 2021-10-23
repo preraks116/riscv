@@ -101,6 +101,7 @@ struct proc {
 
   int priority;                // scheduling priority
   int niceness;                // scheduling niceness
+  int tickstorage[2];          // tick storage for rtime and wtime
 
   // wait_lock must be held when using this:
   struct proc *parent;         // Parent process
