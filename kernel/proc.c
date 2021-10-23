@@ -352,27 +352,26 @@ int set_priority(int priority, int pid)
 void setprio()
 {
   struct proc *p;
-  int old_priority;
+  // int old_priority;
   for(p = proc; p < &proc[NPROC]; p++) 
   {
     if(p->pid != 0)
     {
-      if(p->rtime == 0)
+      if(p->rtime == 0 && p->wtime == 0)
       {
         p->niceness = 5;
       }
       else
       {
-        p->niceness = p->rtime/(p->rtime + p->wtime);
+        p->niceness = (p->wtime * 10)/(p->rtime + p->wtime);
       }
       // printf("%d\n",p->niceness);
-      int temp = p->priority - p->niceness + 5 > 100 ? 100 : p->priority - p->niceness + 5;
-      int dp = 0 > temp ? 0 : temp;
-      old_priority = set_priority(dp, p->pid);
-      if(old_priority > dp)
-      {
-        //rescheduling??
-      }
+      int temp2 = p->priority - p->niceness + 5;
+      int temp = temp2 > 100 ? 100 : temp2;
+      int dp = temp > 0 ? temp : 0;
+      // printf("%d %d %d %d\n",p->rtime,p->wtime, p->priority, dp);
+      set_priority(dp, p->pid);
+
     }
   }
 }
@@ -647,6 +646,8 @@ scheduler(void)
     acquire(&minproc->lock);
     if(minproc->state == RUNNABLE) 
     {
+      minproc->rtime = 0;
+      minproc->wtime = 0;
       minproc->state = RUNNING;
       minproc->sched_time++;
       c->proc = minproc;
@@ -856,7 +857,12 @@ procdump(void)
       state = states[p->state];
     else
       state = "???";
+    #ifdef DEFAULT
     printf("%d %s %s", p->pid, state, p->name);
+    #endif
+    #ifdef PBS
+    printf("%d %d %s %s %d %d %d", p->pid, p->priority, state, p->name, p->rtime, p->wtime, p->sched_time);
+    #endif
     printf("\n");
   }
 }
