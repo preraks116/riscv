@@ -82,6 +82,9 @@ struct trapframe {
 
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
+#define MAXPROC (int)1e4
+#define MAXQ 5
+
 // Per-process state
 struct proc {
   struct spinlock lock;
@@ -97,11 +100,22 @@ struct proc {
   int ctime;                   // process creation time
   int rtime;                  // process running time
   int wtime;                  // process waiting time
-  int sched_time;              // number of times proc has been scheduled
+  int etime;                  // process exit time
+  int nrun;              // number of times proc has been scheduled
+  int sched_start;       // time when proc was scheduled
+  int sched_end;         // time when proc was un-scheduled
+  int total_rtime;       // total running time
 
-  int priority;                // scheduling priority
+  int static_priority;         // static priority
+  int priority;                // dynamic priority
   int niceness;                // scheduling niceness
   int tickstorage[2];          // tick storage for rtime and wtime
+
+  // #ifdef MLFQ 
+  int PQwtime[MAXQ];           // waiting time in each priority queue
+  int PQIndex;                 // index of the priority queue it belongs to
+  int Qticks;                  // ticks in the queue
+  // #endif
 
   // wait_lock must be held when using this:
   struct proc *parent;         // Parent process
@@ -117,3 +131,17 @@ struct proc {
   char name[16];               // Process name (debugging)
 };
 
+// #ifdef MLFQ
+struct PrQ {
+  struct spinlock lock;
+  struct proc *proc[MAXQ];
+  int head;                    // points to the next process that will be scheduled in PQ
+  int tail;                    // points to the location where next proc will be added
+  int size;                    // size of the queue
+};
+
+// struct PrQ *PQ[MAXQ];
+
+int addprocPQ(struct proc *p, int pqID);
+int deleteprocPQ(struct proc *p);
+// #endif

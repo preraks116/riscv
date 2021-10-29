@@ -12,6 +12,8 @@ struct proc proc[NPROC];
 
 struct proc *initproc;
 
+struct PrQ *PQ[MAXQ];
+
 int nextpid = 1;
 struct spinlock pid_lock;
 
@@ -101,6 +103,123 @@ allocpid() {
 // If found, initialize state required to run in the kernel,
 // and return with p->lock held.
 // If there are no free procs, or a memory allocation fails, return 0.
+
+void setrtime()
+{
+  struct proc* p;
+  for(p = proc; p < &proc[NPROC]; p++)
+  {
+    acquire(&p->lock);
+    if(p->state == RUNNING)
+    {
+      p->total_rtime++;
+      #ifdef PBS
+      p->rtime++;
+      #endif
+    }
+    release(&p->lock);
+  }
+}
+
+int addprocPQ(struct proc *p, int pqID)
+{
+  if(PQ[pqID]->tail == MAXPROC + 1)
+  {
+    if(PQ[pqID]->head == 0)
+    {
+      printf("PQ is full\n");
+      return -1;
+    }
+    else
+    {
+      PQ[pqID]->tail = 0;
+    }
+  }
+  PQ[pqID]->proc[PQ[pqID]->tail++] = p;
+  PQ[pqID]->size++;
+  return 1;
+}
+
+int deleteprocPQ(struct proc *p)
+{
+  for(int i = 0; i < PQ[p->PQIndex]->tail; i++)
+  {
+    if(PQ[p->PQIndex]->proc[i] == p)
+    {
+      PQ[p->PQIndex]->proc[i] = 0;
+      PQ[p->PQIndex]->size--;
+      return 1;
+    }
+  }
+  printf("proc not found in PQ\n");
+  return -1;
+}
+
+void incPQ(struct proc *p)
+{
+  if(!p)
+  {
+    printf("proc is null\n");
+    return;
+  }
+  struct proc* temp = p;
+  deleteprocPQ(p);
+  if(temp->PQIndex == 0)
+  {
+    addprocPQ(temp, 0);
+  }
+  else
+  {
+    addprocPQ(temp, temp->PQIndex - 1);
+  }
+}
+
+void decPQ(struct proc *p)
+{
+  if(!p)
+  {
+    printf("proc is null\n");
+    return;
+  }
+  struct proc* temp = p;
+  deleteprocPQ(p);
+  temp->Qticks = ticks;
+  if(temp->PQIndex == MAXQ - 1)
+  {
+    addprocPQ(temp, MAXQ - 1);
+  }
+  else
+  {
+    addprocPQ(temp, temp->PQIndex + 1);
+  }
+}
+
+void chPQ(struct proc *p, int pqID)
+{
+  if(!p)
+  {
+    printf("proc is null\n");
+    return;
+  }
+  struct proc* temp = p;
+  deleteprocPQ(p);
+  if(pqID < 0)
+  {
+    pqID = 0;
+  }
+  else if(pqID > MAXQ - 1)
+  {
+    pqID = MAXQ - 1;
+  }
+
+  if(temp->PQIndex < pqID)  // if PQ is increasing -> lower priority
+  {
+    temp->Qticks = ticks;
+  }
+  temp->PQIndex = pqID;
+  addprocPQ(temp, pqID);
+}
+
 static struct proc*
 allocproc(void)
 {
@@ -122,11 +241,23 @@ found:
   acquire(&tickslock);
   p->ctime = ticks;
   release(&tickslock);
-  p->priority = 60;
+  p->static_priority = 60;
   p->niceness = 5;
-  p->sched_time = 0;
+  p->nrun = 0;
   p->tickstorage[0] = 0;
   p->tickstorage[1] = 0;
+  p->PQIndex = 0;
+
+  //GIVING KERNELTRAP ERROR FOR SOME REASON
+
+  // #ifdef MLFQ 
+  // for(int i = 0; i < MAXQ; i++) {
+  //   p->PQwtime[i] = 0;
+  // }
+  // addprocPQ(p, 0);
+  // #endif
+  
+
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     freeproc(p);
@@ -339,8 +470,8 @@ int set_priority(int priority, int pid)
     {
       acquire(&p->lock);
       // printf("%d %d %d\n",p->rtime, p->priority, p->ctime);
-      old_priority = p->priority;
-      p->priority = priority;
+      old_priority = p->static_priority;
+      p->static_priority = priority;
       p->niceness = 5;
       release(&p->lock);
       return old_priority;
@@ -353,25 +484,29 @@ void setprio()
 {
   struct proc *p;
   // int old_priority;
+  int wtime;
+  int niceness;
   for(p = proc; p < &proc[NPROC]; p++) 
   {
     if(p->pid != 0)
     {
-      if(p->rtime == 0 && p->wtime == 0)
+      if(p->rtime == 0)
       {
-        p->niceness = 5;
+        niceness = 5;
       }
       else
       {
-        p->niceness = (p->wtime * 10)/(p->rtime + p->wtime);
+        wtime = p->sched_end - p->sched_start - p->rtime;
+        niceness = (wtime*10)/(p->rtime + wtime);
       }
       // printf("%d\n",p->niceness);
-      int temp2 = p->priority - p->niceness + 5;
+      int temp2 = p->static_priority - niceness + 5;
       int temp = temp2 > 100 ? 100 : temp2;
-      int dp = temp > 0 ? temp : 0;
+      int dp = temp > 0 ? temp : 0;      
       // printf("%d %d %d %d\n",p->rtime,p->wtime, p->priority, dp);
-      set_priority(dp, p->pid);
-
+      acquire(&p->lock);
+      p->priority = dp;
+      release(&p->lock);
     }
   }
 }
@@ -435,6 +570,7 @@ exit(int status)
 
   p->xstate = status;
   p->state = ZOMBIE;
+  p->etime = ticks;
 
   release(&wait_lock);
 
@@ -466,6 +602,55 @@ wait(uint64 addr)
         if(np->state == ZOMBIE){
           // Found one.
           pid = np->pid;
+          if(addr != 0 && copyout(p->pagetable, addr, (char *)&np->xstate,
+                                  sizeof(np->xstate)) < 0) {
+            release(&np->lock);
+            release(&wait_lock);
+            return -1;
+          }
+          freeproc(np);
+          release(&np->lock);
+          release(&wait_lock);
+          return pid;
+        }
+        release(&np->lock);
+      }
+    }
+
+    // No point waiting if we don't have any children.
+    if(!havekids || p->killed){
+      release(&wait_lock);
+      return -1;
+    }
+    
+    // Wait for a child to exit.
+    sleep(p, &wait_lock);  //DOC: wait-sleep
+  }
+}
+
+int
+waitx(uint64 addr, int* rtime, int* wtime)
+{
+  struct proc *np;
+  int havekids, pid;
+  struct proc *p = myproc();
+
+  acquire(&wait_lock);
+
+  for(;;){
+    // Scan through table looking for exited children.
+    havekids = 0;
+    for(np = proc; np < &proc[NPROC]; np++){
+      if(np->parent == p){
+        // make sure the child isn't still in exit() or swtch().
+        acquire(&np->lock);
+
+        havekids = 1;
+        if(np->state == ZOMBIE){
+          // Found one.
+          pid = np->pid;
+          *rtime = np->total_rtime;
+          *wtime = np->etime - np->ctime - np->total_rtime;
           if(addr != 0 && copyout(p->pagetable, addr, (char *)&np->xstate,
                                   sizeof(np->xstate)) < 0) {
             release(&np->lock);
@@ -611,13 +796,13 @@ scheduler(void)
         {
           if(p->priority == min_priority)
           {
-            //sched_time is the number of time proc has been scheduled
-            if(p->sched_time > minproc->sched_time)
+            //nrun is the number of time proc has been scheduled
+            if(p->nrun > minproc->nrun)
             {
               samesched = 0;
               minproc = p;
             }
-            else if(p->sched_time == minproc->sched_time)
+            else if(p->nrun == minproc->nrun)
             {
               samesched++;
             }
@@ -627,13 +812,13 @@ scheduler(void)
     }
     if(samesched > 0)
     {
-      // if there are multiple processes with same priority and same sched_time,
+      // if there are multiple processes with same priority and same nrun,
       // then we will choose one that has lower ctime
       for(p = proc; p < &proc[NPROC]; p++) 
       {
         if(p->state == RUNNABLE) 
         {
-          if(p->priority == min_priority && p->sched_time == minproc->sched_time)
+          if(p->priority == min_priority && p->nrun == minproc->nrun)
           {
             if(p->ctime < minproc->ctime)
             {
@@ -646,11 +831,12 @@ scheduler(void)
     acquire(&minproc->lock);
     if(minproc->state == RUNNABLE) 
     {
-      minproc->rtime = 0;
-      minproc->wtime = 0;
       minproc->state = RUNNING;
-      minproc->sched_time++;
+      minproc->sched_start = ticks;
+      minproc->nrun++;
       c->proc = minproc;
+      minproc->rtime = 0;
+      // minproc->wtime = 0;
       swtch(&c->context, &minproc->context);
       c->proc = 0;
     }
@@ -658,8 +844,80 @@ scheduler(void)
   }
 
   #endif
+
   #ifdef MLFQ
   // MLFQ scheduler
+  struct proc *minproc = 0;
+  // for(int i = 0; i < MAXQ; i++)
+  // {
+  //   PQ[i]->head = 0;
+  //   PQ[i]->tail = 0;
+  //   PQ[i]->size = 0;
+  // }
+  for(;;)
+  {
+    intr_on();
+    for(p = proc; p < &proc[NPROC]; p++) 
+    {
+      if(p && p->state == RUNNABLE) 
+      {
+        addprocPQ(p, p->PQIndex);
+      }
+    }
+
+    for(int i = 0; i < MAXQ; i++)
+    {
+      while(PQ[i]->size > 0)
+      {
+        minproc = PQ[i]->proc[PQ[i]->head];
+
+        if(!minproc || minproc->killed || !minproc->pid || minproc->state != RUNNABLE)
+        {
+          minproc = 0;
+          PQ[i]->proc[PQ[i]->head] = 0;
+          PQ[i]->size--;
+          PQ[i]->head++;
+        }
+        else
+        {
+          break;
+        }
+      }
+      if(minproc)
+      {
+        break; 
+      }
+    }
+    // removing selected proc from queue
+    PQ[minproc->PQIndex]->proc[PQ[minproc->PQIndex]->head] = 0;
+    PQ[minproc->PQIndex]->size--;
+    PQ[minproc->PQIndex]->head++;
+    minproc->Qticks = ticks;
+    acquire(&minproc->lock);
+    if(minproc->state == RUNNABLE) 
+    {
+      minproc->state = RUNNING;
+      minproc->nrun++;
+      c->proc = minproc;
+      swtch(&c->context, &minproc->context);
+      c->proc = 0;
+      // minproc->rtime = 0;
+      // minproc->wtime = 0;
+    }
+    release(&minproc->lock);
+    if(!minproc)
+    {
+      panic("selected process is null");
+    }
+    if(minproc->state == SLEEPING || (minproc->state == RUNNABLE && ticks - minproc->Qticks > 0 && ticks - minproc->Qticks < (1 << minproc->PQIndex)))
+    {
+      chPQ(minproc, minproc->PQIndex);
+    }
+    else if(minproc->state == RUNNABLE && ticks - minproc->Qticks == (1 << minproc->PQIndex))
+    {
+      chPQ(minproc, minproc->PQIndex + 1);
+    }
+  }
   #endif
 }
 
@@ -696,6 +954,9 @@ yield(void)
 {
   struct proc *p = myproc();
   acquire(&p->lock);
+  #ifdef PBS
+  p->sched_end = ticks;
+  #endif
   p->state = RUNNABLE;
   sched();
   release(&p->lock);
@@ -738,14 +999,13 @@ sleep(void *chan, struct spinlock *lk)
 
   acquire(&p->lock);  //DOC: sleeplock1
   release(lk);
-
   // Go to sleep.
   p->chan = chan;
   p->state = SLEEPING;
-  #ifdef PBS
-  p->tickstorage[0] = ticks;
-  p->rtime += p->tickstorage[0] - p->tickstorage[1];
-  #endif
+  // #ifdef PBS
+  // p->tickstorage[0] = ticks;
+  // p->rtime += p->tickstorage[0] - p->tickstorage[1];
+  // #endif
   // printf("%d: sleep %d %d\n", p->pid, p->rtime,p->wtime);
   sched();
 
@@ -768,11 +1028,14 @@ wakeup(void *chan)
     if(p != myproc()){
       acquire(&p->lock);
       if(p->state == SLEEPING && p->chan == chan) {
+          #ifdef PBS
+          p->sched_end = ticks;
+          #endif
         p->state = RUNNABLE;
-        #ifdef PBS
-        p->tickstorage[1] = ticks;
-        p->wtime += p->tickstorage[1] - p->tickstorage[0];
-        #endif
+        // #ifdef PBS
+        // p->tickstorage[1] = ticks;
+        // p->wtime += p->tickstorage[1] - p->tickstorage[0];
+        // #endif
       }
       release(&p->lock);
     }
@@ -793,6 +1056,9 @@ kill(int pid)
       p->killed = 1;
       if(p->state == SLEEPING){
         // Wake process from sleep().
+          #ifdef PBS
+          p->sched_end = ticks;
+          #endif
         p->state = RUNNABLE;
       }
       release(&p->lock);
@@ -860,8 +1126,15 @@ procdump(void)
     #ifdef DEFAULT
     printf("%d %s %s", p->pid, state, p->name);
     #endif
+    #ifdef FCFS
+    printf("%d %s %s", p->pid, state, p->name);
+    #endif
     #ifdef PBS
-    printf("%d %d %s %s %d %d %d", p->pid, p->priority, state, p->name, p->rtime, p->wtime, p->sched_time);
+    setprio();
+    printf("%d %d %s %s %d %d %d", p->pid, p->priority, state, p->name, p->rtime, p->wtime, p->nrun);
+    #endif
+    #ifdef MLFQ
+    printf("%d %d %s %s %d %d %d %d %d %d %d %d", p->pid, p->PQIndex, state, p->name, p->rtime, p->wtime, p->nrun, p->PQwtime[0], p->PQwtime[1], p->PQwtime[2], p->PQwtime[3], p->PQwtime[4]);
     #endif
     printf("\n");
   }

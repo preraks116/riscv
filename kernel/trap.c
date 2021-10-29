@@ -77,8 +77,15 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
+  #ifdef DEFAULT
   if(which_dev == 2)
     yield();
+  #endif
+
+  #ifdef MLFQ
+  if(which_dev == 2)
+    yield();
+  #endif
 
   usertrapret();
 }
@@ -150,7 +157,12 @@ kerneltrap()
   }
 
   // give up the CPU if this is a timer interrupt.
-  #ifndef FCFS
+  #ifdef DEFAULT 
+  if(which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING)
+    yield();
+  #endif
+
+  #ifdef MLFQ
   if(which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING)
     yield();
   #endif
@@ -164,29 +176,11 @@ kerneltrap()
 void
 clockintr()
 {
-  //get current running process - if running - inc rtime, if waiting - inc wtime
-
-  // struct proc *p = myproc();
-  // if(p) // this might be really bad
-  // {
-  //   acquire(&p->lock);
-  //   if(p->state == RUNNING)
-  //   {
-  //     p->rtime++;
-  //   }
-  //   else if(p->state == SLEEPING)
-  //   {
-  //     p->wtime++;
-  //   }
-  //   release(&p->lock);
-  // }
-
-
-  // increment ticks
   acquire(&tickslock);
   ticks++;
   wakeup(&ticks);
   release(&tickslock);
+  setrtime();
 }
 
 // check if it's an external interrupt or software interrupt,
