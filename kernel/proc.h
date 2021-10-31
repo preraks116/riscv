@@ -82,8 +82,9 @@ struct trapframe {
 
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
-#define MAXPROC (int)1e4
+#define MAXPROC 65
 #define MAXQ 5
+#define AGELIMIT 128
 
 // Per-process state
 struct proc {
@@ -112,9 +113,11 @@ struct proc {
   int tickstorage[2];          // tick storage for rtime and wtime
 
   // #ifdef MLFQ 
-  int PQwtime[MAXQ];           // waiting time in each priority queue
+  int PQwtime[MAXQ];              
   int PQIndex;                 // index of the priority queue it belongs to
-  int Qticks;                  // ticks in the queue
+  int timeslices;              // number of timeslice left
+  int ifqueue;
+  int Qticks;             
   // #endif
 
   // wait_lock must be held when using this:
@@ -133,15 +136,18 @@ struct proc {
 
 // #ifdef MLFQ
 struct PrQ {
-  struct spinlock lock;
-  struct proc *proc[MAXQ];
+  // struct spinlock lock;
+  struct proc *proc[MAXPROC];
   int head;                    // points to the next process that will be scheduled in PQ
   int tail;                    // points to the location where next proc will be added
-  int size;                    // size of the queue
+  int size;                    // size of the PrQ
 };
 
-// struct PrQ *PQ[MAXQ];
 
-int addprocPQ(struct proc *p, int pqID);
-int deleteprocPQ(struct proc *p);
-// #endif
+
+void            addprocPQ(struct PrQ *list, struct proc *element);
+void            popprocPQ(struct PrQ *list);
+struct proc*    getproc(struct PrQ *list);
+void            deleteprocPQ(struct PrQ *list, int pid);
+void            ageing(void);
+void            addnewprocs();

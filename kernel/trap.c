@@ -81,10 +81,19 @@ usertrap(void)
   if(which_dev == 2)
     yield();
   #endif
-
   #ifdef MLFQ
-  if(which_dev == 2)
-    yield();
+  if(which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING)
+  {
+    struct proc* p = myproc();
+    if(p->timeslices <= 0)
+    {
+      if(p->PQIndex != 4)
+      {
+        p->PQIndex++;
+      }     
+      yield();
+    }
+  }
   #endif
 
   usertrapret();
@@ -157,16 +166,25 @@ kerneltrap()
   }
 
   // give up the CPU if this is a timer interrupt.
-  #ifdef DEFAULT 
+  #ifdef DEFAULT
   if(which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING)
     yield();
   #endif
 
   #ifdef MLFQ
   if(which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING)
-    yield();
+  {
+    struct proc* p = myproc();
+    if(p->timeslices <= 0)
+    {
+      if(p->PQIndex != 4)
+      {
+        p->PQIndex++;
+      }     
+      yield();
+    }
+  }
   #endif
-
   // the yield() may have caused some traps to occur,
   // so restore trap registers for use by kernelvec.S's sepc instruction.
   w_sepc(sepc);
@@ -178,9 +196,9 @@ clockintr()
 {
   acquire(&tickslock);
   ticks++;
+  setrtime();
   wakeup(&ticks);
   release(&tickslock);
-  setrtime();
 }
 
 // check if it's an external interrupt or software interrupt,

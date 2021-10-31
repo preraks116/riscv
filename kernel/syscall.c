@@ -172,17 +172,28 @@ syscall(void)
 {
   struct proc *p = myproc();
   int val = p->trapframe->a7;
+  int ret;
   if(val>0)
   {
     if(val < (sizeof(syscalls)/sizeof((syscalls)[0])) && syscalls[val])
     {
+      argint(0, &ret);
       p->trapframe->a0 = syscalls[val]();
       int mask = p->mask;
       int r = mask & (1 << val);
       if(r)
       {
         printf("%d: syscall %s (",p->pid,sysindex[val].name);
-        for (int i = 0; i < sysindex[val].val; i++){printf("%d ",argraw(i));}
+        if(sysindex[val].val == 1)
+        {
+          printf("%d ",ret);
+        }
+        else
+        {
+          printf("%d ",ret);
+          for (int i = 1; i < sysindex[val].val; i++){ int n; argint(i,&n);printf("%d ",n);}
+        }
+        
         printf("\b) -> %d\n", p->trapframe->a0);
       }
     }

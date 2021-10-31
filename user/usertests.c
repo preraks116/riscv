@@ -2872,7 +2872,7 @@ main(int argc, char *argv[])
     {mem, "mem"},
     {pipe1, "pipe1"},
     {killstatus, "killstatus"},
-    {preempt, "preempt"},
+    // {preempt, "preempt"},
     {exitwait, "exitwait"},
     {rmdot, "rmdot"},
     {fourteen, "fourteen"},
