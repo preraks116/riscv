@@ -5,20 +5,8 @@
 int main(int argc, char *argv[])
 {
     int priority, pid;
-    if (argc != 3)
-    {
-        fprintf(2, "usage: setpriority priority pid\n");
-        exit(1);
-    }
-
     priority = atoi(argv[1]);
     pid = atoi(argv[2]);
-
-    if (set_priority(priority, pid) < 0)
-    {
-        fprintf(2, "setpriority failed\n");
-        exit(1);
-    }
-
+    set_priority(priority, pid);
     exit(0);
 }
